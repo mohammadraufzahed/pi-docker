@@ -1,0 +1,108 @@
+/**
+ * pi-docker — typed container ops for pi agents.
+ *
+ *   docker_ps      — containers (name, status, health, uptime)
+ *   docker_logs    — tail a container's logs
+ *   docker_stats   — one-shot cpu/mem/net per container
+ *   docker_inspect — full inspect (health, restart count, ports)
+ *   docker_exec    — run a command inside a container (careful)
+ *
+ * Uses the local docker CLI/socket — free, no API.
+ */
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { execFile } from "node:child_process";
+import { Type } from "typebox";
+
+const MAX_OUT = 12000;
+
+function run(args: string[], timeout = 30_000): Promise<string> {
+	return new Promise((resolve) => {
+		execFile("docker", args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (e, o, er) => {
+			const out = String(o ?? "") + (er ? `\n${er}` : "");
+			resolve(
+				`exit ${e ? (typeof (e as any).code === "number" ? (e as any).code : 1) : 0}\n` +
+				(out.length > MAX_OUT ? out.slice(0, MAX_OUT) + "\n[truncated]" : out || "(no output)"),
+			);
+		});
+	});
+}
+
+export default function piDocker(pi: ExtensionAPI) {
+	pi.registerTool({
+		name: "docker_ps",
+		label: "Docker PS",
+		description: "List containers — name, image, status, health, uptime.",
+		parameters: Type.Object({
+			all: Type.Optional(Type.Boolean({ description: "include stopped" })),
+		}),
+		async execute(_id, p) {
+			const out = await run([
+				"ps", ...(p.all ? ["-a"] : []),
+				"--format", "{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}",
+			]);
+			return { content: [{ type: "text" as const, text: out }] };
+		},
+	});
+
+	pi.registerTool({
+		name: "docker_logs",
+		label: "Docker Logs",
+		description: "Tail a container's logs — errors, recent activity.",
+		parameters: Type.Object({
+			container: Type.String(),
+			lines: Type.Optional(Type.Number({ description: "default 80" })),
+			since: Type.Optional(Type.String({ description: "e.g. 30m, 2h" })),
+		}),
+		async execute(_id, p) {
+			const args = ["logs", "--tail", String(p.lines ?? 80)];
+			if (p.since) args.push("--since", p.since);
+			args.push(p.container);
+			return { content: [{ type: "text" as const, text: await run(args) }] };
+		},
+	});
+
+	pi.registerTool({
+		name: "docker_stats",
+		label: "Docker Stats",
+		description: "One-shot CPU/mem/net usage per container.",
+		parameters: Type.Object({
+			container: Type.Optional(Type.String({ description: "default: all" })),
+		}),
+		async execute(_id, p) {
+			const args = ["stats", "--no-stream",
+				"--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.PIDs}}"];
+			if (p.container) args.push(p.container);
+			return { content: [{ type: "text" as const, text: await run(args) }] };
+		},
+	});
+
+	pi.registerTool({
+		name: "docker_inspect",
+		label: "Docker Inspect",
+		description: "Container detail — health, restarts, ports, env.",
+		parameters: Type.Object({ container: Type.String() }),
+		async execute(_id, p) {
+			const out = await run([
+				"inspect", "--format",
+				"{{.Name}} image={{.Config.Image}}\nstatus={{.State.Status}} health={{.State.Health.Status}} restarts={{.RestartCount}}\nstarted={{.State.StartedAt}}\nports={{json .NetworkSettings.Ports}}",
+				p.container,
+			]);
+			return { content: [{ type: "text" as const, text: out }] };
+		},
+	});
+
+	pi.registerTool({
+		name: "docker_exec",
+		label: "Docker Exec",
+		description: "Run a command inside a container (read-only use).",
+		parameters: Type.Object({
+			container: Type.String(),
+			cmd: Type.String({ description: "command to run inside" }),
+		}),
+		async execute(_id, p) {
+			const out = await run(["exec", p.container, "sh", "-c", p.cmd], 60_000);
+			return { content: [{ type: "text" as const, text: out }] };
+		},
+	});
+}
