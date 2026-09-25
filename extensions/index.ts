@@ -133,7 +133,7 @@ export default function piDocker(pi: ExtensionAPI) {
 		async execute(_id, p) {
 			const out = await run([
 				"inspect", "--format",
-				"{{.Name}} image={{.Config.Image}}\nstatus={{.State.Status}} health={{.State.Health.Status}} restarts={{.RestartCount}}\nstarted={{.State.StartedAt}}\nports={{json .NetworkSettings.Ports}}",
+				"{{.Name}} image={{.Config.Image}}\nstatus={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} restarts={{.RestartCount}}\nstarted={{.State.StartedAt}}\nports={{json .NetworkSettings.Ports}}",
 				p.container,
 			]);
 			return toolResult(out);
