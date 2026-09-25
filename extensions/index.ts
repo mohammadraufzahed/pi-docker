@@ -15,6 +15,54 @@ import { execFile } from "node:child_process";
 import { Type } from "typebox";
 
 const MAX_OUT = 12000;
+const READ_ONLY_COMMANDS = new Set([
+	"cat",
+	"curl",
+	"df",
+	"du",
+	"env",
+	"grep",
+	"head",
+	"ls",
+	"netstat",
+	"ping",
+	"printenv",
+	"ps",
+	"pwd",
+	"ss",
+	"stat",
+	"tail",
+	"test",
+	"top",
+	"uptime",
+	"wc",
+	"which",
+]);
+const WRITE_COMMAND_PATTERN = /(^|[\s;&|()])(?:apt|apt-get|apk|bash|chmod|chown|cp|dd|dnf|echo|install|mkdir|mv|npm|rm|rmdir|sed|sh|tee|touch|truncate|yum)(?:\s|$)/;
+const SHELL_META_PATTERN = /[;&|`$<>]/;
+
+function assertReadOnlyCommand(cmd: string): string | null {
+	const trimmed = cmd.trim();
+	const [binary] = trimmed.split(/\s+/, 1);
+
+	if (!trimmed) {
+		return "docker_exec requires a command.";
+	}
+
+	if (!READ_ONLY_COMMANDS.has(binary)) {
+		return `docker_exec only allows observational commands; '${binary}' is not allowed.`;
+	}
+
+	if (SHELL_META_PATTERN.test(trimmed) || WRITE_COMMAND_PATTERN.test(trimmed)) {
+		return "docker_exec rejected a command with shell metacharacters or write-capable operations.";
+	}
+
+	return null;
+}
+
+function toolResult(text: string) {
+	return { content: [{ type: "text" as const, text }], details: { text } };
+}
 
 function run(args: string[], timeout = 30_000): Promise<string> {
 	return new Promise((resolve) => {
@@ -41,7 +89,7 @@ export default function piDocker(pi: ExtensionAPI) {
 				"ps", ...(p.all ? ["-a"] : []),
 				"--format", "{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}",
 			]);
-			return { content: [{ type: "text" as const, text: out }] };
+			return toolResult(out);
 		},
 	});
 
@@ -58,7 +106,7 @@ export default function piDocker(pi: ExtensionAPI) {
 			const args = ["logs", "--tail", String(p.lines ?? 80)];
 			if (p.since) args.push("--since", p.since);
 			args.push(p.container);
-			return { content: [{ type: "text" as const, text: await run(args) }] };
+			return toolResult(await run(args));
 		},
 	});
 
@@ -73,7 +121,7 @@ export default function piDocker(pi: ExtensionAPI) {
 			const args = ["stats", "--no-stream",
 				"--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.PIDs}}"];
 			if (p.container) args.push(p.container);
-			return { content: [{ type: "text" as const, text: await run(args) }] };
+			return toolResult(await run(args));
 		},
 	});
 
@@ -88,21 +136,27 @@ export default function piDocker(pi: ExtensionAPI) {
 				"{{.Name}} image={{.Config.Image}}\nstatus={{.State.Status}} health={{.State.Health.Status}} restarts={{.RestartCount}}\nstarted={{.State.StartedAt}}\nports={{json .NetworkSettings.Ports}}",
 				p.container,
 			]);
-			return { content: [{ type: "text" as const, text: out }] };
+			return toolResult(out);
 		},
 	});
 
 	pi.registerTool({
 		name: "docker_exec",
 		label: "Docker Exec",
-		description: "Run a command inside a container (read-only use).",
+		description: "Run an allowlisted observational command inside a container; write-capable shell commands are rejected.",
 		parameters: Type.Object({
 			container: Type.String(),
-			cmd: Type.String({ description: "command to run inside" }),
+			cmd: Type.String({ description: "observational command to run inside" }),
 		}),
 		async execute(_id, p) {
+			const rejection = assertReadOnlyCommand(p.cmd);
+
+			if (rejection) {
+				return toolResult(`rejected: ${rejection}`);
+			}
+
 			const out = await run(["exec", p.container, "sh", "-c", p.cmd], 60_000);
-			return { content: [{ type: "text" as const, text: out }] };
+			return toolResult(out);
 		},
 	});
 }

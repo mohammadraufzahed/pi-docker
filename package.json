@@ -1,1 +1,31 @@
-{"name":"pi-docker","version":"1.0.0","description":"Pi extension","keywords":["pi-package","pi-extension"],"license":"MIT","repository":"mohammadraufzahed/pi-docker","pi":{"extensions":["./extensions/index.ts"]},"peerDependencies":{"@earendil-works/pi-coding-agent":"*","typebox":"*"}}
+{
+  "name": "pi-docker",
+  "version": "1.0.0",
+  "description": "Pi extension",
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "license": "MIT",
+  "repository": "mohammadraufzahed/pi-docker",
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.87.1 <1",
+    "typebox": ">=1.3.34 <2"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "smoke": "node tests/smoke.mjs",
+    "test": "npm run check && npm run smoke"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "typebox": "1.3.34"
+  }
+}
