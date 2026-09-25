@@ -38,7 +38,6 @@ const READ_ONLY_COMMANDS = new Set([
 	"wc",
 	"which",
 ]);
-const WRITE_COMMAND_PATTERN = /(^|[\s;&|()])(?:apt|apt-get|apk|bash|chmod|chown|cp|dd|dnf|echo|install|mkdir|mv|npm|rm|rmdir|sed|sh|tee|touch|truncate|yum)(?:\s|$)/;
 const SHELL_META_PATTERN = /[;&|`$<>]/;
 
 function assertReadOnlyCommand(cmd: string): string | null {
@@ -53,8 +52,8 @@ function assertReadOnlyCommand(cmd: string): string | null {
 		return `docker_exec only allows observational commands; '${binary}' is not allowed.`;
 	}
 
-	if (SHELL_META_PATTERN.test(trimmed) || WRITE_COMMAND_PATTERN.test(trimmed)) {
-		return "docker_exec rejected a command with shell metacharacters or write-capable operations.";
+	if (SHELL_META_PATTERN.test(trimmed)) {
+		return "docker_exec rejected a command with shell metacharacters.";
 	}
 
 	return null;
