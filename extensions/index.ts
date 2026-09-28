@@ -20,7 +20,6 @@ const READ_ONLY_COMMANDS = new Set([
 	"curl",
 	"df",
 	"du",
-	"env",
 	"grep",
 	"head",
 	"ls",
